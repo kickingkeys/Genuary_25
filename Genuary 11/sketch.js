@@ -1,287 +1,352 @@
-let cells = [];
-let food = [];
-const INITIAL_CELLS = 8;
-const MAX_CELLS = 200;
-const FOOD_COLORS = ["#577455", "#8C3F4D", "#6B8E9B", "#EE8838", "#F4F2EF", "#6B8E9B"];
-let petriDish;
+/*
+Space: Reset image
+V: Toggle vertical/horizontal
+D: Diagonal sort
+G/P/C/E/B: Different sorting modes
+1-6: Switch images
+Mouse click: Start/stop processing
+
+*/
+
+let myImg = [];        // Array to hold all images
+let img, originalImg;  // Current working image and its original state
+let imgIndex = 0;      // Current image index
+let isProcessing = false;
+let amp = 130;         // Animation speed (higher = slower)
+let sortMode = 'brightness';  // Default sorting mode
+let sortDirection = 'vertical';
+let processingIndex = 0;
+let rowPix = [];
+let index = [];
+let transitionEase = 0.15;
+
+function preload() {
+  for(let i = 1; i <= 6; i++) {
+    myImg[i-1] = loadImage(`g${i}.jpg`);
+  }
+}
 
 function setup() {
-  // Create a 9:16 aspect ratio canvas
-  createCanvas(600, 1067);  // 600 * (16/9) ≈ 1067
-  petriDish = new PetriDish(min(width, height) * 0.4);  // Size relative to smallest dimension
-  for (let i = 0; i < INITIAL_CELLS; i++) {
-    cells.push(new Cell(random(-petriDish.radius, petriDish.radius), random(-petriDish.radius, petriDish.radius)));
+  createCanvas(892, 642);
+  pixelDensity(1);
+  img = myImg[0].get();
+  originalImg = myImg[0].get();
+  img.loadPixels();
+  originalImg.loadPixels();
+  resetIndex();
+  logState();
+}
+
+// 1. SORTING ALGORITHMS AND PIXEL PROCESSING
+
+function processVerticalSort() {
+  if (processingIndex >= width) {
+    isProcessing = false;
+    processingIndex = 0;
+    return;
+  }
+
+  let x = processingIndex;
+  let sortSegment = [];
+  
+  // Collect pixels in column
+  for (let y = 0; y < height; y++) {
+    let index = (x + y * width) * 4;
+    sortSegment.push([
+      img.pixels[index],
+      img.pixels[index + 1],
+      img.pixels[index + 2],
+      img.pixels[index + 3]
+    ]);
+  }
+  
+  // Sort based on current mode
+  sortSegment.sort((a, b) => {
+    switch(sortMode) {
+      case 'brightness':
+        return getBrightness(a) - getBrightness(b);
+      case 'gold':
+        return getGoldness(a) - getGoldness(b);
+      case 'pattern':
+        return getPatternValue(a) - getPatternValue(b);
+      case 'contrast':
+        return getContrast(a) - getContrast(b);
+      case 'edge':
+        return getEdgeValue(a) - getEdgeValue(b);
+      default:
+        return getBrightness(a) - getBrightness(b);
+    }
+  });
+  
+  // Write back sorted pixels
+  for (let y = 0; y < height; y++) {
+    let index = (x + y * width) * 4;
+    img.pixels[index] = sortSegment[y][0];
+    img.pixels[index + 1] = sortSegment[y][1];
+    img.pixels[index + 2] = sortSegment[y][2];
+    img.pixels[index + 3] = sortSegment[y][3];
+  }
+  
+  processingIndex++;
+}
+
+function processHorizontalSort() {
+  if (processingIndex >= height) {
+    isProcessing = false;
+    processingIndex = 0;
+    return;
+  }
+
+  let y = processingIndex;
+  let sortSegment = [];
+  
+  // Collect pixels in row
+  for (let x = 0; x < width; x++) {
+    let index = (x + y * width) * 4;
+    sortSegment.push([
+      img.pixels[index],
+      img.pixels[index + 1],
+      img.pixels[index + 2],
+      img.pixels[index + 3]
+    ]);
+  }
+  
+  // Sort using same criteria as vertical
+  sortSegment.sort((a, b) => {
+    switch(sortMode) {
+      case 'brightness':
+        return getBrightness(a) - getBrightness(b);
+      case 'gold':
+        return getGoldness(a) - getGoldness(b);
+      case 'pattern':
+        return getPatternValue(a) - getPatternValue(b);
+      case 'contrast':
+        return getContrast(a) - getContrast(b);
+      case 'edge':
+        return getEdgeValue(a) - getEdgeValue(b);
+      default:
+        return getBrightness(a) - getBrightness(b);
+    }
+  });
+  
+  // Write back sorted pixels
+  for (let x = 0; x < width; x++) {
+    let index = (x + y * width) * 4;
+    img.pixels[index] = sortSegment[x][0];
+    img.pixels[index + 1] = sortSegment[x][1];
+    img.pixels[index + 2] = sortSegment[x][2];
+    img.pixels[index + 3] = sortSegment[x][3];
+  }
+  
+  processingIndex++;
+}
+
+function processDiagonalSort() {
+  if (processingIndex >= width + height) {
+    isProcessing = false;
+    processingIndex = 0;
+    return;
+  }
+  
+  let sortSegment = [];
+  
+  // Collect pixels in diagonal
+  for (let i = 0; i < max(width, height); i++) {
+    let x = i;
+    let y = processingIndex - i;
+    
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      let index = (x + y * width) * 4;
+      sortSegment.push([
+        img.pixels[index],
+        img.pixels[index + 1],
+        img.pixels[index + 2],
+        img.pixels[index + 3]
+      ]);
+    }
+  }
+  
+  // Sort using current mode
+  sortSegment.sort((a, b) => {
+    switch(sortMode) {
+      case 'brightness':
+        return getBrightness(a) - getBrightness(b);
+      case 'gold':
+        return getGoldness(a) - getGoldness(b);
+      case 'pattern':
+        return getPatternValue(a) - getPatternValue(b);
+      case 'contrast':
+        return getContrast(a) - getContrast(b);
+      case 'edge':
+        return getEdgeValue(a) - getEdgeValue(b);
+      default:
+        return getBrightness(a) - getBrightness(b);
+    }
+  });
+  
+  // Write back sorted pixels
+  let segmentIndex = 0;
+  for (let i = 0; i < max(width, height); i++) {
+    let x = i;
+    let y = processingIndex - i;
+    
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      let index = (x + y * width) * 4;
+      img.pixels[index] = sortSegment[segmentIndex][0];
+      img.pixels[index + 1] = sortSegment[segmentIndex][1];
+      img.pixels[index + 2] = sortSegment[segmentIndex][2];
+      img.pixels[index + 3] = sortSegment[segmentIndex][3];
+      segmentIndex++;
+    }
+  }
+  
+  processingIndex++;
+}
+
+// 2. PIXEL VALUE CALCULATION FUNCTIONS
+
+function getBrightness(pixel) {
+  return (pixel[0] + pixel[1] + pixel[2]) / 3;
+}
+
+function getGoldness(pixel) {
+  // Gold detection based on RGB ratios typical for gold colors
+  let r = pixel[0], g = pixel[1], b = pixel[2];
+  let goldness = (r > g && g > b) ? // typical gold has R > G > B
+    (r * 0.5 + g * 0.3 - b * 0.2) : 0;
+  return goldness;
+}
+
+function getPatternValue(pixel) {
+  // Pattern detection using local contrast
+  return Math.abs(pixel[0] - pixel[1]) + 
+         Math.abs(pixel[1] - pixel[2]) +
+         Math.abs(pixel[2] - pixel[0]);
+}
+
+function getContrast(pixel) {
+  let brightness = getBrightness(pixel);
+  return Math.abs(brightness - 128); // Distance from middle gray
+}
+
+function getEdgeValue(pixel) {
+  // Simple edge detection using color differences
+  return Math.max(
+    Math.abs(pixel[0] - pixel[1]),
+    Math.abs(pixel[1] - pixel[2]),
+    Math.abs(pixel[2] - pixel[0])
+  );
+}
+
+// 3. INTERACTION HANDLERS
+
+function keyPressed() {
+  switch(key.toLowerCase()) {
+    case ' ':
+      // Reset image
+      img = originalImg.get();
+      img.loadPixels();
+      isProcessing = false;
+      processingIndex = 0;
+      break;
+    case 'v':
+      sortDirection = sortDirection === 'vertical' ? 'horizontal' : 'vertical';
+      processingIndex = 0;
+      break;
+    case 'd':
+      sortDirection = 'diagonal';
+      processingIndex = 0;
+      break;
+    case 'g':
+      sortMode = 'gold';
+      processingIndex = 0;
+      break;
+    case 'p':
+      sortMode = 'pattern';
+      processingIndex = 0;
+      break;
+    case 'c':
+      sortMode = 'contrast';
+      processingIndex = 0;
+      break;
+    case 'e':
+      sortMode = 'edge';
+      processingIndex = 0;
+      break;
+    case 'b':
+      sortMode = 'brightness';
+      processingIndex = 0;
+      break;
+  }
+  
+  // Number keys for image selection
+  if (key >= '1' && key <= '6') {
+    imgIndex = int(key) - 1;
+    img = myImg[imgIndex].get();
+    originalImg = myImg[imgIndex].get();
+    img.loadPixels();
+    originalImg.loadPixels();
+    processingIndex = 0;
+  }
+  
+  logState();
+}
+
+function mousePressed() {
+  isProcessing = !isProcessing;
+  if (isProcessing) {
+    processingIndex = 0;
   }
 }
 
 function draw() {
-  background('#F4F2EF');
+  background(0);
   
-  // Center the coordinate system in the middle of the canvas
-  translate(width / 2, height / 2);
+  let progress = (1 - sin(PI/2 + frameCount/amp)) / 2;
+  let easedProgress = ease(progress);
   
-  petriDish.display();
-  
-  if (food.length < cells.length - 1 && random(1) < 0.1) {
-    let angle = random(TWO_PI);
-    let r = random(petriDish.radius);
-    food.push(new Food(cos(angle) * r, sin(angle) * r));
-  }
-  
-  for (let f of food) {
-    f.display();
-  }
-  
-  for (let i = cells.length - 1; i >= 0; i--) {
-    cells[i].update();
-    cells[i].display();
-    
-    if (cells[i].reproducing && cells.length < MAX_CELLS) {
-      let angle = random(TWO_PI);
-      let newX = cells[i].pos.x + cos(angle) * cells[i].r * 2;
-      let newY = cells[i].pos.y + sin(angle) * cells[i].r * 2;
-      cells.push(new Cell(newX, newY));
-      cells[i].reproducing = false;
-      cells[i].revertToStageOne();
-      if (cells[i].interactingWith) {
-        cells[i].interactingWith.reproducing = false;
-        cells[i].interactingWith.revertToStageOne();
-        cells[i].interactingWith.interactingWith = null;
-      }
-      cells[i].interactingWith = null;
-    }
-  }
-}
-
-class PetriDish {
-  constructor(radius) {
-    this.radius = radius;
-  }
-  
-  display() {
-    noFill();
-    stroke(200);
-    strokeWeight(2);
-    ellipse(0, 0, this.radius * 2);
-  }
-}
-
-class Cell {
-  constructor(x, y) {
-    this.pos = createVector(x, y);
-    this.vel = p5.Vector.random2D();
-    this.acc = createVector();
-    this.r = 15;
-    this.maxSpeed = 2;
-    this.maxForce = 0.1;
-    this.foodEaten = 0;
-    this.stage = 1;
-    this.color = this.getColorForStage(this.stage);
-    this.interactingWith = null;
-    this.interactionTime = 0;
-    this.reproducing = false;
-  }
-
-  update() {
-    if (!this.interactingWith) {
-      this.vel.add(this.acc);
-      this.vel.limit(this.maxSpeed);
-      this.pos.add(this.vel);
-      this.acc.mult(0);
-      
-      this.edges();
-      this.eat();
-      this.revertStage();
-      if (this.stage < 5) {
-        this.seekFood();
+  if(isProcessing) {
+    for(let i = 0; i < 4; i++) {
+      if(sortDirection === 'vertical') {
+        processVerticalSort();
+      } else if(sortDirection === 'horizontal') {
+        processHorizontalSort();
       } else {
-        if (!this.seekStage5()) {
-          this.vel.add(p5.Vector.random2D().mult(0.1));
-        }
-      }
-    } else {
-      this.interact();
-    }
-  }
-
-  display() {
-    push();
-    translate(this.pos.x, this.pos.y);
-    rotate(this.vel.heading() + PI/2);
-    
-    fill(this.color);
-    noStroke();
-    beginShape();
-    vertex(0, -this.r);
-    bezierVertex(this.r, -this.r, this.r, this.r, 0, this.r);
-    bezierVertex(-this.r, this.r, -this.r, -this.r, 0, -this.r);
-    endShape(CLOSE);
-    
-    fill(150, 140);
-    ellipse(0, 0, this.r * 0.6);
-    
-    // Display stage number
-    fill(0);
-    textAlign(CENTER, CENTER);
-    textSize(10);
-    text(this.stage, 0, 0);
-    
-    if (this.stage === 5) {
-      let auraSize = map(sin(frameCount * 0.1), -1, 1, this.r * 2, this.r * 3);
-      stroke(0, 255, 0, 50);
-      noFill();
-      ellipse(0, 0, auraSize);
-    }
-    pop();
-  }
-
-  edges() {
-    let d = dist(0, 0, this.pos.x, this.pos.y);
-    if (d > petriDish.radius - this.r) {
-      let angle = this.pos.heading();
-      this.pos.x = cos(angle) * (petriDish.radius - this.r);
-      this.pos.y = sin(angle) * (petriDish.radius - this.r);
-      this.vel.reflect(this.pos);
-    }
-  }
-
-  eat() {
-    for (let i = food.length - 1; i >= 0; i--) {
-      let d = p5.Vector.dist(this.pos, food[i].pos);
-      if (d < this.r) {
-        food.splice(i, 1);
-        this.foodEaten++;
-        this.r += 0.5;
-        this.stage = min(5, floor(this.foodEaten / 1) + 1);  // Update stage based on food eaten
-        this.color = this.getColorForStage(this.stage);
+        processDiagonalSort();
       }
     }
+    img.updatePixels();
+    logState(easedProgress);
   }
+  
+  image(img, 0, 0);
+  
+  // Progress bar
+  noStroke();
+  fill(255);
+  rect(0, height - 5, width * easedProgress, 5);
+}
 
-  seekFood() {
-    if (food.length > 0) {
-      let closestFood = this.getClosestFood(2);
-      if (closestFood) {
-        this.seek(closestFood.pos);
-      }
-    }
-  }
-
-  getClosestFood(n) {
-    let foodCopy = [...food];
-    foodCopy.sort((a, b) => {
-      let da = p5.Vector.dist(this.pos, a.pos);
-      let db = p5.Vector.dist(this.pos, b.pos);
-      return da - db;
-    });
-    return random(foodCopy.slice(0, min(n, foodCopy.length)));
-  }
-
-  seekStage5() {
-    let closest = null;
-    let closestD = Infinity;
-    for (let other of cells) {
-      if (other !== this && other.stage === 5 && !other.interactingWith) {
-        let d = p5.Vector.dist(this.pos, other.pos);
-        if (d < closestD) {
-          closest = other;
-          closestD = d;
-        }
-      }
-    }
-    if (closest) {
-      this.seek(closest.pos);
-      if (closestD < this.r + closest.r) {
-        this.interactingWith = closest;
-        closest.interactingWith = this;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  seek(target) {
-    let desired = p5.Vector.sub(target, this.pos);
-    desired.setMag(this.maxSpeed);
-    let steer = p5.Vector.sub(desired, this.vel);
-    steer.limit(this.maxForce);
-    this.acc.add(steer);
-  }
-
-  interact() {
-    if (this.interactingWith) {
-      let angle = this.interactionTime * 0.05;
-      let radius = this.r + this.interactingWith.r;
-      let xOff = cos(angle) * radius;
-      let yOff = sin(angle) * radius;
-      
-      // Keep original positions
-      let originalPos = this.pos.copy();
-      let partnerPos = this.interactingWith.pos.copy();
-      
-      // Calculate new positions
-      this.pos.x = partnerPos.x + xOff;
-      this.pos.y = partnerPos.y + yOff;
-      
-      this.interactionTime++;
-      
-      if (this.interactionTime > 100) {
-        this.reproducing = true;
-        this.interactingWith.reproducing = true;
-      }
-      
-      // Reset to original positions
-      this.pos = originalPos;
-      this.interactingWith.pos = partnerPos;
-    }
-  }
-
-  revertStage() {
-    if (this.stage === 5 && frameCount % 300 === 0) { // Check every 5 seconds
-      let foundPartner = false;
-      for (let other of cells) {
-        if (other !== this && other.stage === 5 && !other.interactingWith) {
-          foundPartner = true;
-          break;
-        }
-      }
-      if (!foundPartner) {
-        this.stage = 4;
-        this.foodEaten = 4;
-        this.color = this.getColorForStage(this.stage);
-      }
-    }
-  }
-
-  revertToStageOne() {
-    this.stage = 1;
-    this.foodEaten = 0;
-    this.color = this.getColorForStage(this.stage);
-    this.r = 15;  // Reset size to initial value
-  }
-
-  getColorForStage(stage) {
-    switch(stage) {
-      case 1: return color(200, 200, 200, 140);  // Light gray
-      case 2: return color(150, 150, 200, 140);  // Light blue
-      case 3: return color(150, 200, 150, 140);  // Light green
-      case 4: return color(200, 200, 150, 140);  // Light yellow
-      case 5: return color(0, 255, 0, 140);      // Bright green
-      default: return color(200, 200, 200, 140);
+function resetIndex() {
+  index = [];
+  for(let i = 0; i < width; i++) {
+    index[i] = [];
+    for(let j = 0; j < height; j++) {
+      index[i][j] = i + j * width;
     }
   }
 }
 
-class Food {
-  constructor(x, y) {
-    this.pos = createVector(x, y);
-    this.color = color(random(FOOD_COLORS));
-    this.size = 7.5;
-  }
+function ease(p) {
+  return transitionEase * Math.pow(p, 3) + (1 - transitionEase) * p;
+}
 
-  display() {
-    fill(this.color);
-    noStroke();
-    ellipse(this.pos.x, this.pos.y, this.size);
-  }
+function logState(progress = 0) {
+  console.log({
+    mode: sortMode,
+    direction: sortDirection,
+    imageNumber: imgIndex + 1,
+    progress: Math.round(progress * 100) + '%',
+    frameRate: Math.round(frameRate())
+  });
 }
